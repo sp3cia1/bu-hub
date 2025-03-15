@@ -29,6 +29,53 @@ const UserSchema = new Schema({
   }
 });
 
+// RideRequest Schema
+const RideRequestSchema = new Schema({
+  userId: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  destination: {
+    type: String,
+    required: true,
+    enum: ['Airport', 'Train Station', 'Bus Terminal'] // Customize these destinations
+  },
+  departureTime: {
+    type: Date,
+    required: true
+  },
+  status: {
+    type: String,
+    enum: ['Available', 'Pending', 'Confirmed'],
+    default: 'Available'
+  },
+  // Multiple matches support
+  matches: [{
+    rideId: {
+      type: Schema.Types.ObjectId, 
+      ref: 'RideRequest'
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'confirmed', 'declined'],
+      default: 'pending'
+    },
+    conversationId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Conversation'
+    },
+    initiatedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
 // Method to reset the daily request count before calling increment request count
 UserSchema.methods.resetDailyCountIfNeeded = function() {
   const now = new Date();
