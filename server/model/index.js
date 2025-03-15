@@ -39,7 +39,7 @@ const RideRequestSchema = new Schema({
   destination: {
     type: String,
     required: true,
-    enum: ['Airport', 'Train Station', 'Bus Terminal'] // Customize these destinations
+    enum: ['Airport', 'Train Station', 'Bus Terminal'] //in mvp pick from limited option
   },
   departureTime: {
     type: Date,
@@ -50,7 +50,7 @@ const RideRequestSchema = new Schema({
     enum: ['Available', 'Pending', 'Confirmed'],
     default: 'Available'
   },
-  // Multiple matches support
+  // Multiple matches are stored in this sub document
   matches: [{
     rideId: {
       type: Schema.Types.ObjectId, 
@@ -75,6 +75,9 @@ const RideRequestSchema = new Schema({
     default: Date.now
   }
 });
+
+// TTL index for auto-cleanup
+RideRequestSchema.index({ departureTime: 1 }, { expireAfterSeconds: 0 });
 
 // Method to reset the daily request count before calling increment request count
 UserSchema.methods.resetDailyCountIfNeeded = function() {
@@ -101,7 +104,9 @@ UserSchema.methods.incrementRequestCount = function() {
 };
 
 const User = mongoose.model('User', UserSchema);
+const RideRequest = mongoose.model('RideRequest', RideRequestSchema);
 
 module.exports = {
-  User
+  User,
+  RideRequest
 };
