@@ -79,6 +79,47 @@ const RideRequestSchema = new Schema({
 // TTL index for auto-cleanup
 RideRequestSchema.index({ departureTime: 1 }, { expireAfterSeconds: 0 });
 
+
+const ConversationSchema = new Schema({
+  rideRequestA: {
+    type: Schema.Types.ObjectId,
+    ref: 'RideRequest',
+    required: true
+  },
+  rideRequestB: {
+    type: Schema.Types.ObjectId,
+    ref: 'RideRequest',
+    required: true
+  },
+  
+  messages: [{
+    senderId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    content: {
+      type: String,
+      required: true,
+      maxlength: 500 
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  expiresAt: {
+    type: Date,
+    required: true
+    // we will set in controller based on ride departure + buffer time
+  }
+})
+
 // Method to reset the daily request count before calling increment request count
 UserSchema.methods.resetDailyCountIfNeeded = function() {
   const now = new Date();
