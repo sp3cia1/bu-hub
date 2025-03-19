@@ -120,6 +120,9 @@ const ConversationSchema = new Schema({
   }
 })
 
+// TTL index for auto-cleanup
+ConversationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
 // Method to reset the daily request count before calling increment request count
 UserSchema.methods.resetDailyCountIfNeeded = function() {
   const now = new Date();
@@ -144,10 +147,24 @@ UserSchema.methods.incrementRequestCount = function() {
   return this.requestCount.count;
 };
 
+// Pre-save hook to enforce message limit
+ConversationSchema.pre('save', function(next) {
+  // Check if messages array exceeds our limit
+  if (this.messages && this.messages.length > 20) {
+    console.log(`Trimming conversation ${this._id} messages from ${this.messages.length} to 20`);
+    
+    // Keep only the 20 most recent messages
+    this.messages = this.messages.slice(-20);
+  }
+  next();
+});
+
 const User = mongoose.model('User', UserSchema);
 const RideRequest = mongoose.model('RideRequest', RideRequestSchema);
+const Conversation = mongoose.model('Conversation', ConversationSchema);
 
 module.exports = {
   User,
-  RideRequest
+  RideRequest,
+  Conversation
 };
