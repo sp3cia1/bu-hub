@@ -80,6 +80,9 @@ const RideRequestSchema = new Schema({
   }
 });
 
+// for efficient lookup from middleware (O(logn)) without O(n)
+UserSchema.index({ accessToken: 1 });
+
 // TTL index for auto-cleanup
 RideRequestSchema.index({ departureTime: 1 }, { expireAfterSeconds: 0 });
 

@@ -38,7 +38,7 @@ const authenticate = async (req, res, next) => {
       req.user = user;
     
       next();
-        
+
     } catch (error) {
       console.error('Authentication error:', error);
       return res.status(500).json({
@@ -46,4 +46,8 @@ const authenticate = async (req, res, next) => {
         message: 'Authentication failed due to server error.'
       });
     }
-  };
+};
+
+module.exports = {
+    authenticate
+};
