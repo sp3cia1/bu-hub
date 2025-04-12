@@ -85,7 +85,8 @@ UserSchema.index({ accessToken: 1 });
 
 // TTL index for auto-cleanup
 RideRequestSchema.index({ departureTime: 1 }, { expireAfterSeconds: 0 });
-
+// Index for efficient matching queries
+RideRequestSchema.index({ destination: 1, status: 1, departureTime: 1 }); // Compound index for matching
 
 const ConversationSchema = new Schema({
   rideRequestA: {
