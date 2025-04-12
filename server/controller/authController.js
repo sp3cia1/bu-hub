@@ -13,7 +13,7 @@ const handleRegistration = async (req, res) => {
       });
     }
     
-    if (!email.endsWith('.bennett.edu.in')) {
+    if (!email.endsWith('@bennett.edu.in')) {
       return res.status(400).json({ 
         success: false, 
         message: 'Please use a valid Bennett University email' 
@@ -72,7 +72,7 @@ const handleLogin = async (req, res) => {
       });
     }
     
-    if (!email.endsWith('.bennett.edu.in')) {
+    if (!email.endsWith('@bennett.edu.in')) {
       return res.status(400).json({ 
         success: false, 
         message: 'Please use a valid Bennett University email' 
