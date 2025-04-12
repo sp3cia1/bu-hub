@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const authRoutes = require('./routes/authRoutes'); 
+const rideRoutes = require('./routes/rideRoutes'); 
 
 const app = express();
 const PORT = process.env.PORT || 8000; 
@@ -20,6 +21,7 @@ const connectDB = async () => {
 };
 
 app.use('/api/auth', authRoutes);
+app.use('/api/rides', rideRoutes);
 
 // --- Start Server ---
 const startServer = async () => {
