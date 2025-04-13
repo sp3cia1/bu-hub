@@ -54,11 +54,11 @@ const RideRequestSchema = new Schema({
     enum: ['Available', 'Pending', 'Confirmed'],
     default: 'Available'
   },
-  // Multiple matches are stored in this sub document
-  matches: [{
+  conversations: [{ 
     rideId: {
-      type: Schema.Types.ObjectId, 
-      ref: 'RideRequest'
+      type: Schema.Types.ObjectId,
+      ref: 'RideRequest',
+      required: true 
     },
     status: {
       type: String,
@@ -67,7 +67,8 @@ const RideRequestSchema = new Schema({
     },
     conversationId: {
       type: Schema.Types.ObjectId,
-      ref: 'Conversation'
+      ref: 'Conversation',
+      required: true 
     },
     initiatedAt: {
       type: Date,
