@@ -3,6 +3,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const authRoutes = require('./routes/authRoutes'); 
 const rideRoutes = require('./routes/rideRoutes'); 
+const conversationRoutes = require('./routes/conversationRoutes'); 
 
 const app = express();
 const PORT = process.env.PORT || 8000; 
@@ -22,6 +23,7 @@ const connectDB = async () => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/rides', rideRoutes);
+app.use('/api/conversations', conversationRoutes); 
 
 // --- Start Server ---
 const startServer = async () => {
