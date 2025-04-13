@@ -5,6 +5,7 @@ const MAX_MATCH_RESULTS = 15; // Limit the number of returned matches
 
 /**
  * Finds potential ride matches for a given user's ride request.
+ * Includes both 'Available' and 'Pending' rides.
  * @param {object} userRideRequest - The Mongoose document of the user's active ride request.
  * @returns {Promise<Array<object>>} - A promise that resolves to a sorted array of potential match RideRequest documents.
  */
@@ -23,12 +24,11 @@ const findPotentialMatches = async (userRideRequest) => {
         // Find potential matches in the database
         const potentialMatches = await RideRequest.find({
             destination: userRideRequest.destination,
-            status: 'Available', // Only match with available rides
+            // --- MODIFIED: Include both Available and Pending statuses ---
+            status: { $in: ['Available', 'Pending'] },
             userId: { $ne: userRideRequest.userId }, // Exclude the user's own request
             departureTime: { $gte: minTime, $lte: maxTime } // Within the time window
         })
-        // Optionally populate user details if needed later, but keep it lean for now
-        // .populate('userId', 'email phoneNumber') // Example: if you need user info directly
         .lean(); // Use .lean() for performance if we don't need Mongoose documents
 
         if (!potentialMatches || potentialMatches.length === 0) {
