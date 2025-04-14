@@ -62,7 +62,7 @@ const RideRequestSchema = new Schema({
     },
     status: {
       type: String,
-      enum: ['pending', 'confirmed', 'declined'],
+      enum: ['pending', 'awaiting_confirmation', 'confirmed', 'declined'],
       default: 'pending'
     },
     conversationId: {
