@@ -1,5 +1,6 @@
 const { User, RideRequest } = require('../model/index');
 const matchingService = require('../services/matchingService'); // Import the service
+const mongoose = require('mongoose'); // Import mongoose
 
 const MAX_DAILY_REQUESTS = 5; //number of rides a user can create in a day
 
@@ -123,47 +124,100 @@ const getCurrentRideRequest = async (req, res) => {
     }
 };
 
-// Controller to delete/cancel the user's current active ride request
+// --- MODIFIED Controller to delete/cancel the user's current active ride request ---
 const deleteRideRequest = async (req, res) => {
+    const userId = req.user._id;
+    const session = await mongoose.startSession();
+    let rideRequestIdToDelete = null;
+
     try {
-        const userId = req.user._id;
+        await session.withTransaction(async () => {
+            // 1. Find user and get their current ride request ID
+            const user = await User.findById(userId).session(session);
+            if (!user) {
+                // Should not happen with authenticate middleware, but good check
+                throw { status: 404, message: 'User not found.' };
+            }
 
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found.' });
+            rideRequestIdToDelete = user.currentRideRequest;
+            if (!rideRequestIdToDelete) {
+                throw { status: 404, message: 'No active ride request found to delete.' };
+            }
+
+            // 2. Fetch the ride request to be deleted
+            const rideToDelete = await RideRequest.findById(rideRequestIdToDelete).session(session);
+            if (!rideToDelete) {
+                // Ride ID exists on user but document is missing - data inconsistency
+                console.warn(`Ride request ${rideRequestIdToDelete} referenced by user ${userId} not found. Clearing user reference.`);
+                user.currentRideRequest = null;
+                await user.save({ session });
+                // Allow transaction to commit successfully, but inform client
+                throw { status: 404, message: 'Active ride request reference was invalid and has been cleared. No ride deleted.' };
+            }
+
+            // 3. Process Counterpart Rides
+            const conversationsToProcess = rideToDelete.conversations || [];
+            for (const convRef of conversationsToProcess) {
+                // Only process conversations that might affect other rides' states
+                if (['pending', 'awaiting_confirmation', 'confirmed'].includes(convRef.status)) {
+                    const counterpartRide = await RideRequest.findById(convRef.rideId).session(session);
+                    if (counterpartRide) {
+                        const counterpartConvRef = counterpartRide.conversations.find(c => c.conversationId.equals(convRef.conversationId));
+
+                        // Check if counterpart reference exists and needs update
+                        if (counterpartConvRef && counterpartConvRef.status !== 'declined') {
+                            counterpartConvRef.status = 'declined'; // Mark as declined due to deletion
+
+                            // Re-evaluate counterpart's overall status
+                            const hasOtherActive = counterpartRide.conversations.some(
+                                c => ['pending', 'awaiting_confirmation', 'confirmed'].includes(c.status) && !c.conversationId.equals(convRef.conversationId) // Exclude the one we just declined
+                            );
+
+                            // If no other active/confirmed conversations, and it wasn't already Available
+                            if (!hasOtherActive && counterpartRide.status !== 'Available') {
+                                counterpartRide.status = 'Available';
+                            }
+                            await counterpartRide.save({ session });
+                        }
+                    } else {
+                        console.warn(`Counterpart ride ${convRef.rideId} not found during deletion cleanup for ride ${rideRequestIdToDelete}.`);
+                    }
+                }
+            }
+
+            // 4. Unlink the ride request from the user
+            user.currentRideRequest = null;
+            await user.save({ session });
+
+            // Note: Actual deletion happens *after* the transaction commits
+
+        }); // Transaction ends
+
+        // 5. Perform the actual deletion *after* successful transaction
+        if (rideRequestIdToDelete) {
+            const deletedDoc = await RideRequest.findByIdAndDelete(rideRequestIdToDelete);
+            if (!deletedDoc) {
+                 console.warn(`Attempted to delete ride ${rideRequestIdToDelete} after transaction, but it was already gone.`);
+            }
         }
 
-        const rideRequestId = user.currentRideRequest;
-        if (!rideRequestId) {
-            return res.status(404).json({
-                success: false,
-                message: 'No active ride request found to delete.'
-            });
-        }
-
-        // Unlink the ride request from the user first
-        user.currentRideRequest = null;
-        await user.save();
-
-        // Then delete the ride request document
-        const deletedRide = await RideRequest.findByIdAndDelete(rideRequestId);
-
-        if (!deletedRide) {
-            // This might happen in a rare race condition, but good to handle
-             console.warn(`Ride request ${rideRequestId} not found during deletion attempt for user ${userId}.`);
-             // Still return success as the user link is removed.
-        }
-
+        await session.endSession();
         return res.status(200).json({
             success: true,
-            message: 'Active ride request cancelled successfully.'
+            message: 'Active ride request cancelled successfully and related states updated.'
         });
 
     } catch (error) {
+        await session.endSession();
+        // If the error came from our thrown exceptions, use its status/message
+        if (error.status) {
+             return res.status(error.status).json({ success: false, message: error.message });
+        }
+        // Otherwise, handle generic errors
         console.error('Error deleting ride request:', error);
         return res.status(500).json({
             success: false,
-            message: 'Failed to cancel ride request due to server error.'
+            message: error.message || 'Failed to cancel ride request due to server error.'
         });
     }
 };
@@ -219,6 +273,6 @@ const findMatchesForCurrentRide = async (req, res) => {
 module.exports = {
     createRideRequest,
     getCurrentRideRequest,
-    deleteRideRequest,
-    findMatchesForCurrentRide // Export the new function
+    deleteRideRequest, // Ensure the modified function is exported
+    findMatchesForCurrentRide
 };
