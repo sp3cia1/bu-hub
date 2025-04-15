@@ -1,5 +1,6 @@
 const { User, RideRequest, Conversation } = require('../model/index');
 const mongoose = require('mongoose');
+const { emitToConversation } = require('../socketManager');
 
 const CONVERSATION_EXPIRY_BUFFER_HOURS = 2; // Conversation expires 2 hours after the ride departs
 
@@ -307,6 +308,13 @@ const sendMessage = async (req, res) => {
         // Save the conversation (pre-save hook will handle trimming if needed)
         await conversation.save();
 
+        // --- Emit WebSocket Event ---
+        emitToConversation(conversationId, 'newMessage', {
+             conversationId: conversationId,
+             message: newMessage
+        });
+        // --- End Emit ---
+
         // Return the newly added message
         return res.status(201).json({
             success: true,
@@ -376,16 +384,17 @@ const confirmRide = async (req, res) => {
     }
 
     const session = await mongoose.startSession();
-    let finalMessage = ''; // Message to return to the user
+    let finalMessage = ''; 
+    let rideA, rideB, conversation; 
 
     try {
         await session.withTransaction(async () => {
             // 1. Fetch Conversation and associated Ride Requests
-            const conversation = await Conversation.findById(conversationId).session(session);
+            conversation = await Conversation.findById(conversationId).session(session);
             if (!conversation) throw { status: 404, message: 'Conversation not found.' };
 
-            let rideA = await RideRequest.findById(conversation.rideRequestA).session(session);
-            let rideB = await RideRequest.findById(conversation.rideRequestB).session(session);
+            rideA = await RideRequest.findById(conversation.rideRequestA).session(session);
+            rideB = await RideRequest.findById(conversation.rideRequestB).session(session);
             if (!rideA || !rideB) throw { status: 404, message: 'One or both associated ride requests not found.' };
 
             // Identify which ride belongs to the confirmer and which is the other party
@@ -449,6 +458,31 @@ const confirmRide = async (req, res) => {
         }); // Transaction ends
 
         await session.endSession();
+
+        // --- Emit WebSocket Event(s) After Successful Transaction ---
+        if (conversation && rideA && rideB) {
+             // Fetch updated refs to get correct statuses after potential changes by processOtherPending
+             const finalRideA = await RideRequest.findById(rideA._id).lean();
+             const finalRideB = await RideRequest.findById(rideB._id).lean();
+
+             const finalConvRefA = finalRideA.conversations.find(c => c.conversationId.equals(conversationId));
+             const finalConvRefB = finalRideB.conversations.find(c => c.conversationId.equals(conversationId));
+
+             // Emit update for the primary conversation
+             emitToConversation(conversationId, 'conversationUpdate', {
+                 conversationId: conversationId,
+                 rideAStatus: finalRideA.status, // Overall ride status
+                 rideBStatus: finalRideB.status, // Overall ride status
+                 conversationStatusA: finalConvRefA?.status, // Status in A's context
+                 conversationStatusB: finalConvRefB?.status  // Status in B's context
+             });
+
+             // TODO: Emit updates for conversations affected by processOtherPending
+             // This requires collecting affected conversation IDs and user IDs during the transaction
+             // or re-querying based on the changes. For MVP, focus on the primary update.
+        }
+        // --- End Emit ---
+
         return res.status(200).json({ success: true, message: finalMessage });
 
     } catch (error) {
@@ -471,15 +505,16 @@ const declineConversation = async (req, res) => {
     }
 
     const session = await mongoose.startSession();
+    let rideA, rideB, conversation; // Define outside transaction scope
 
     try {
         await session.withTransaction(async () => {
             // 1. Fetch Conversation and associated Ride Requests
-            const conversation = await Conversation.findById(conversationId).session(session);
+            conversation = await Conversation.findById(conversationId).session(session);
             if (!conversation) throw { status: 404, message: 'Conversation not found.' };
 
-            let rideA = await RideRequest.findById(conversation.rideRequestA).session(session);
-            let rideB = await RideRequest.findById(conversation.rideRequestB).session(session);
+            rideA = await RideRequest.findById(conversation.rideRequestA).session(session);
+            rideB = await RideRequest.findById(conversation.rideRequestB).session(session);
             if (!rideA || !rideB) throw { status: 404, message: 'One or both associated ride requests not found.' };
 
             // 2. Validate Participation
@@ -535,6 +570,26 @@ const declineConversation = async (req, res) => {
         }); // Transaction ends
 
         await session.endSession();
+
+        // --- Emit WebSocket Event After Successful Transaction ---
+         if (conversation && rideA && rideB) {
+             // Fetch updated refs to get correct statuses
+             const finalRideA = await RideRequest.findById(rideA._id).lean();
+             const finalRideB = await RideRequest.findById(rideB._id).lean();
+
+             const finalConvRefA = finalRideA.conversations.find(c => c.conversationId.equals(conversationId));
+             const finalConvRefB = finalRideB.conversations.find(c => c.conversationId.equals(conversationId));
+
+             emitToConversation(conversationId, 'conversationUpdate', {
+                 conversationId: conversationId,
+                 rideAStatus: finalRideA.status,
+                 rideBStatus: finalRideB.status,
+                 conversationStatusA: finalConvRefA?.status,
+                 conversationStatusB: finalConvRefB?.status
+             });
+         }
+        // --- End Emit ---
+
         return res.status(200).json({ success: true, message: 'Conversation declined successfully.' });
 
     } catch (error) {
