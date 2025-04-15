@@ -17,15 +17,38 @@ const createRideRequest = async (req, res) => {
             });
         }
 
-        //check if departure time is not in past
+        // --- MODIFIED: Time Slot Validation ---
         const now = new Date();
         const departure = new Date(departureTime);
-        if (isNaN(departure.getTime()) || departure <= now) { 
+
+        // Check if parsing failed or date is invalid
+        if (isNaN(departure.getTime())) {
              return res.status(400).json({
                 success: false,
-                message: 'Invalid or past departure time provided.'
+                message: 'Invalid departure time format provided.'
             });
         }
+
+        // Check if time is in the past
+        if (departure <= now) {
+             return res.status(400).json({
+                success: false,
+                message: 'Departure time must be in the future.'
+            });
+        }
+
+        // Check for allowed time slots (minutes 00 or 30, seconds/ms 0)
+        const minutes = departure.getMinutes();
+        const seconds = departure.getSeconds();
+        const milliseconds = departure.getMilliseconds();
+
+        if (![0, 30].includes(minutes) || seconds !== 0 || milliseconds !== 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid departure time slot. Please select a time ending in :00 or :30.'
+            });
+        }
+        // --- END MODIFIED: Time Slot Validation ---
 
         // Validate destination against schema enum (Mongoose handles this on save, but early check is good)
         const allowedDestinations = RideRequest.schema.path('destination').enumValues;
@@ -60,10 +83,12 @@ const createRideRequest = async (req, res) => {
         }
 
         // Create the new ride request
+        // Ensure seconds/ms are zeroed before saving, even if validation passed (belt and suspenders)
+        departure.setSeconds(0, 0);
         const newRideRequest = new RideRequest({
             userId,
             destination,
-            departureTime: departure // Use the validated Date object
+            departureTime: departure // Use the validated and potentially normalized Date object
         });
         await newRideRequest.save();
 
