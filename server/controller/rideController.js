@@ -1,6 +1,7 @@
 const { User, RideRequest } = require('../model/index');
-const matchingService = require('../services/matchingService'); // Import the service
-const mongoose = require('mongoose'); // Import mongoose
+const matchingService = require('../services/matchingService'); 
+const mongoose = require('mongoose'); 
+const { emitToConversation } = require('../socketManager'); 
 
 const MAX_DAILY_REQUESTS = 5; //number of rides a user can create in a day
 
@@ -154,6 +155,7 @@ const deleteRideRequest = async (req, res) => {
     const userId = req.user._id;
     const session = await mongoose.startSession();
     let rideRequestIdToDelete = null;
+    let affectedConversations = []; // Store affected conv IDs and counterpart ride IDs
 
     try {
         await session.withTransaction(async () => {
@@ -203,6 +205,14 @@ const deleteRideRequest = async (req, res) => {
                                 counterpartRide.status = 'Available';
                             }
                             await counterpartRide.save({ session });
+
+                            // --- Store info for emission ---
+                            affectedConversations.push({
+                                conversationId: convRef.conversationId,
+                                counterpartRideId: counterpartRide._id,
+                                counterpartRideStatus: counterpartRide.status // Status after update
+                            });
+                            // --- End Store ---
                         }
                     } else {
                         console.warn(`Counterpart ride ${convRef.rideId} not found during deletion cleanup for ride ${rideRequestIdToDelete}.`);
@@ -227,6 +237,27 @@ const deleteRideRequest = async (req, res) => {
         }
 
         await session.endSession();
+
+        // --- Emit WebSocket Events After Successful Transaction & Deletion ---
+        affectedConversations.forEach(affected => {
+            emitToConversation(affected.conversationId, 'conversationUpdate', {
+                conversationId: affected.conversationId,
+                // Indicate one ride was deleted, counterpart status updated
+                rideAStatus: 'Deleted', // Or some indicator
+                rideBStatus: affected.counterpartRideStatus,
+                conversationStatusA: 'declined', // Status from deleted ride's perspective
+                conversationStatusB: 'declined'  // Status from counterpart's perspective
+            });
+             // OR emit a more specific event like 'rideDeletedFromConversation'
+             // emitToConversation(affected.conversationId, 'rideDeletedFromConversation', {
+             //     conversationId: affected.conversationId,
+             //     deletedRideId: rideRequestIdToDelete,
+             //     remainingRideId: affected.counterpartRideId,
+             //     remainingRideStatus: affected.counterpartRideStatus
+             // });
+        });
+        // --- End Emit ---
+
         return res.status(200).json({
             success: true,
             message: 'Active ride request cancelled successfully and related states updated.'
