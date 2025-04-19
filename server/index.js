@@ -18,39 +18,32 @@ const httpServer = http.createServer(app);
 
 // --- Define Allowed Origins ---
 const allowedOrigins = [
-    process.env.CLIENT_URL || "http://localhost:3000", // Default frontend
-    "http://localhost:5500", // Common Live Server port
-    "http://127.0.0.1:5500"  // Another common Live Server address
-    // Add other origins if needed
+    process.env.CLIENT_URL || "http://localhost:3000",
+    "http://localhost:5173", // Ensure your frontend dev port is here
+    "http://localhost:5174",
+    "http://localhost:5175",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500"
 ];
 
 // --- CORS Configuration for Express ---
 const corsOptions = {
-    origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl requests, or file://)
-        // Note: Allowing null origin might be needed for file:// but consider security implications.
-        // For stricter control, remove `!origin` check if only specific origins are needed.
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            callback(new Error(`Not allowed by CORS from origin: ${origin}`));
-        }
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], // Allow common methods
-    allowedHeaders: ["Content-Type", "Authorization"], // Allow necessary headers
-    credentials: true // If you need to handle cookies or authorization headers
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
 };
 
-// --- Initialize Socket.IO (using similar origin logic) ---
+// --- Initialize Socket.IO ---
 const io = new Server(httpServer, {
-    cors: corsOptions // Use the same CORS options for Socket.IO
+    cors: corsOptions
 });
 initializeSocketIO(io);
 
 const PORT = process.env.PORT || 8000;
 
 // --- Express Middleware ---
-app.use(cors(corsOptions)); // Apply CORS middleware to all Express routes
+app.use(cors(corsOptions)); 
 app.use(express.json({
   verify: (req, res, buf, encoding) => {
     try {
@@ -77,14 +70,12 @@ const authLimiter = rateLimit({
 	standardHeaders: 'draft-7',
 	legacyHeaders: false,
     message: 'Too many authentication attempts from this IP, please try again after an hour',
-    // Skip successful requests? Could be considered, but simple limit is often fine.
-    // skipSuccessfulRequests: true,
 });
 
 // Apply limiters to specific routes
-app.use('/api/auth', authLimiter); // Stricter limit for authentication
-app.use('/api/rides', generalLimiter); // General limit for ride operations
-app.use('/api/conversations', generalLimiter); // General limit for conversation operations
+// app.use('/api/auth', authLimiter); // Stricter limit for authentication
+// app.use('/api/rides', generalLimiter); // General limit for ride operations
+// app.use('/api/conversations', generalLimiter); // General limit for conversation operations
 
 // --- Socket.IO Middleware ---
 io.use(socketAuthenticate); // Apply authentication middleware to each connection
@@ -102,7 +93,6 @@ io.on('connection', async (socket) => {
         if (userRide && userRide.conversations) {
             userRide.conversations.forEach(convRef => {
                 if (convRef.conversationId) {
-                    // console.log(`User ${socket.user.email} joining room ${convRef.conversationId.toString()}`);
                     socket.join(convRef.conversationId.toString());
                 }
             });
@@ -111,15 +101,10 @@ io.on('connection', async (socket) => {
         console.error(`Error fetching ride/conversations for socket room joining (User: ${socket.user.email}):`, error);
     }
 
-
     // Handle disconnect
     socket.on('disconnect', (reason) => {
         console.log(`User disconnected: ${socket.user.email} (${socket.id}), Reason: ${reason}`);
-        // Potential cleanup if needed
     });
-
-    // Example: Listen for client-side events if necessary
-    // socket.on('clientEvent', (data) => { ... });
 });
 
 // --- Database Connection ---
@@ -156,4 +141,4 @@ const startServer = async () => {
   });
 };
 
-startServer(); // Initialize the server start process
+startServer();
