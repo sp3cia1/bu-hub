@@ -3,7 +3,7 @@ const matchingService = require('../services/matchingService');
 const mongoose = require('mongoose'); 
 const { emitToConversation } = require('../socketManager'); 
 
-const MAX_DAILY_REQUESTS = 5; //number of rides a user can create in a day
+const MAX_DAILY_REQUESTS = 50; //number of rides a user can create in a day
 
 // Controller to create a new ride request
 const createRideRequest = async (req, res) => {
@@ -66,13 +66,25 @@ const createRideRequest = async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found.' });
         }
 
-        // Check if user already has an active ride request
+        // --- MODIFIED: Check for active ride request with existence validation ---
         if (user.currentRideRequest) {
-            return res.status(409).json({
-                success: false,
-                message: 'You already have an active ride request. Please cancel it before creating a new one.'
-            });
+            // Verify if the referenced ride request actually exists
+            const existingRide = await RideRequest.findById(user.currentRideRequest).lean(); // Use lean for efficiency
+
+            if (existingRide) {
+                // Only block if the referenced ride *actually exists*
+                return res.status(409).json({
+                    success: false,
+                    message: 'You already have an active ride request. Please cancel it before creating a new one.'
+                });
+            } else {
+                // Data inconsistency found: User has a reference, but ride doesn't exist.
+                console.warn(`Data inconsistency: Clearing invalid currentRideRequest ${user.currentRideRequest} for user ${userId}`);
+                user.currentRideRequest = null; // Clear the invalid reference
+                // No need to await here, will be saved later if creation proceeds
+            }
         }
+        // --- END MODIFIED ---
 
         // Check daily request limit
         user.resetDailyCountIfNeeded();
@@ -96,7 +108,7 @@ const createRideRequest = async (req, res) => {
         // Update user's request count and link the new ride
         user.incrementRequestCount();
         user.currentRideRequest = newRideRequest._id;
-        await user.save();
+        await user.save(); // This save will also persist the cleared reference if inconsistency was found
 
         return res.status(201).json({
             success: true,
@@ -129,12 +141,14 @@ const getCurrentRideRequest = async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found.' });
         }
 
+        // --- FIX: Return 200 OK with null data if no ride request exists ---
         if (!user.currentRideRequest) {
-            return res.status(404).json({
-                success: false,
-                message: 'No active ride request found.'
+            return res.status(200).json({
+                success: true,
+                rideRequest: null // Indicate no active ride found
             });
         }
+        // --- END FIX ---
 
         return res.status(200).json({
             success: true,
@@ -306,13 +320,23 @@ const findMatchesForCurrentRide = async (req, res) => {
         }
 
         // 3. Call the matching service
-        const matches = await matchingService.findPotentialMatches(userRideRequest);
+        const potentialMatchIds = await matchingService.findPotentialMatches(userRideRequest); // Assuming service returns IDs or minimal docs
 
-        // 4. Return the results
+        // --- FIX: Populate user details for the matches ---
+        // Fetch the full RideRequest documents for the matches and populate user details
+        const matches = await RideRequest.find({
+            '_id': { $in: potentialMatchIds } // Find rides whose IDs are in the potentialMatchIds array
+        }).populate({
+            path: 'userId', // Field to populate
+            select: 'displayName avatarUrl' // Select only the fields needed by the frontend
+        }).lean(); // Use lean for performance if no Mongoose methods needed after this
+        // --- END FIX ---
+
+        // 4. Return the results (now with populated user details)
         return res.status(200).json({
             success: true,
             message: `Found ${matches.length} potential matches.`,
-            matches: matches
+            matches: matches // Send the populated matches array
         });
 
     } catch (error) {
@@ -328,7 +352,7 @@ const findMatchesForCurrentRide = async (req, res) => {
 
 module.exports = {
     createRideRequest,
-    getCurrentRideRequest,
+    getCurrentRideRequest, // Ensure this function is exported
     deleteRideRequest, // Ensure the modified function is exported
     findMatchesForCurrentRide
 };
