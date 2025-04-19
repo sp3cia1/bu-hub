@@ -14,6 +14,15 @@ const UserSchema = new Schema({
     required: true,
     trim: true
   },
+  displayName: {
+    type: String,
+    // required: true // Generated on creation
+    // unique: true // Consider adding if strict uniqueness is needed + handle collisions
+  },
+  avatarUrl: {
+    type: String,
+    // required: true // Generated on creation
+  },
   isEmailVerified: {
     type: Boolean,
     default: false
@@ -31,7 +40,7 @@ const UserSchema = new Schema({
     type: String,
     default: null
   }
-});
+}, { timestamps: true });
 
 // RideRequest Schema
 const RideRequestSchema = new Schema({
