@@ -50,6 +50,15 @@ const initiateConversation = async (req, res) => {
             }
             // --- END MODIFIED STATUS CHECK ---
 
+            // --- NEW: Check if this specific interaction was previously declined ---
+            const initiatorConvRef = initiatorRide.conversations.find(c => c.rideId.equals(targetRide._id));
+            const targetConvRef = targetRide.conversations.find(c => c.rideId.equals(initiatorRide._id));
+
+            if (initiatorConvRef?.status === 'declined' || targetConvRef?.status === 'declined') {
+                 throw { status: 409, message: 'Cannot initiate conversation as it was previously declined by one of the parties.' };
+            }
+            // --- END NEW ---
+
             // check if a conversation already exists between these two rides
             const existingConversation = await Conversation.findOne({
                 $or: [
@@ -58,9 +67,11 @@ const initiateConversation = async (req, res) => {
                 ]
             }).session(session);
 
+            // --- MODIFIED: Adjust existing conversation check message ---
             if (existingConversation) {
-                throw { status: 409, message: 'A conversation already exists or is pending between these ride requests.' };
+                throw { status: 409, message: 'An active conversation already exists or is pending between these ride requests.' };
             }
+            // --- END MODIFIED ---
 
             // determine conversation expiry time (based on the EARLIER departure time)
             const earlierDepartureTime = initiatorRide.departureTime < targetRide.departureTime
@@ -139,17 +150,15 @@ const getConversationsForCurrentRide = async (req, res) => {
                 path: 'conversations.conversationId', // Populate the Conversation document
                 model: 'Conversation',
                 select: 'messages expiresAt rideRequestA rideRequestB', // Select necessary fields
-                // Avoid deep population here if not strictly needed for this view
             })
             .populate({
                 path: 'conversations.rideId', // Populate the other RideRequest document
                 model: 'RideRequest',
-                // --- MODIFIED: Select 'conversations' array from the other ride ---
                 select: 'userId destination departureTime conversations',
                 populate: { // Populate the user associated with the other ride
                     path: 'userId',
                     model: 'User',
-                    select: 'email phoneNumber' // Select fields needed for display
+                    select: 'email displayName avatarUrl' // Select fields needed for display
                 }
             })
             .lean(); // Use lean for performance
@@ -187,7 +196,8 @@ const getConversationsForCurrentRide = async (req, res) => {
                 otherUser: {
                     _id: otherRideDoc?.userId?._id,
                     email: otherRideDoc?.userId?.email,
-                    // phoneNumber: otherRideDoc?.userId?.phoneNumber, // Consider privacy
+                    displayName: otherRideDoc?.userId?.displayName,
+                    avatarUrl: otherRideDoc?.userId?.avatarUrl
                 },
                 otherRideDetails: {
                     destination: otherRideDoc?.destination,
@@ -195,7 +205,6 @@ const getConversationsForCurrentRide = async (req, res) => {
                 },
                 myStatus: myStatus, // e.g., 'awaiting_confirmation'
                 otherPartyStatus: otherPartyStatus, // e.g., 'pending'
-                // status: myStatus, // Keep original 'status' field? Maybe rename for clarity? Let's use myStatus/otherPartyStatus
                 lastMessage: conversationDoc?.messages?.[conversationDoc.messages.length - 1],
                 initiatedAt: conv.initiatedAt,
                 expiresAt: conversationDoc?.expiresAt
