@@ -13,6 +13,7 @@ import {
     Tooltip,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
+import ChatIcon from '@mui/icons-material/Chat';
 
 const Navbar: React.FC = () => {
     const { isAuthenticated, user, logout, isLoading } = useAuth();
@@ -30,23 +31,23 @@ const Navbar: React.FC = () => {
     const handleLogout = () => {
         handleCloseUserMenu();
         logout();
-        navigate('/login'); // Redirect to login after logout
+        navigate('/login'); 
     };
 
-    // Don't render navbar content until auth state is loaded
+    
     if (isLoading) {
-        return null; // Or a minimal loading bar if preferred
+        return null; 
     }
 
     return (
         <AppBar
             position="static"
-            elevation={0} // Flat design, rely on border
+            elevation={0} 
             sx={{
-                // Use theme colors
-                backgroundColor: 'background.paper', // d-card
+                
+                backgroundColor: 'background.paper',
                 borderBottom: 1,
-                borderColor: 'divider', // d-border
+                borderColor: 'divider', 
                 // Gradient attempt (might need refinement or styled-components)
                 // background: `linear-gradient(to right, ${theme.palette.background.paper}, #1f2937 50%, ${theme.palette.background.paper})`,
             }}
@@ -71,7 +72,21 @@ const Navbar: React.FC = () => {
 
                 {/* Conditional Rendering based on Auth State */}
                 {isAuthenticated && user ? (
-                    <Box sx={{ flexGrow: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}> {/* Adjusted gap */}
+                        {/* --- NEW: Chats Button --- */}
+                        <Tooltip title="Chats">
+                            <IconButton
+                                color="inherit" // Inherit color from AppBar context
+                                component={RouterLink}
+                                to="/chats"
+                                sx={{ color: 'text.primary' }} // Use theme text color
+                            >
+                                <ChatIcon />
+                            </IconButton>
+                        </Tooltip>
+                        {/* --- END NEW --- */}
+
+                        {/* User Avatar Menu */}
                         <Tooltip title="Open settings">
                             <IconButton onClick={handleOpenUserMenu} sx={{ p: 0 }}>
                                 <Avatar
